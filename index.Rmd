@@ -1,0 +1,182 @@
+---
+title: "Personal Activity Forecasting"
+author: "Archon Financial Management & Investments"
+date: "27 de septiembre de 2015"
+output: html_document
+---
+
+## Summary
+
+In this project we are going to predict the manner in which, a sample of  individuals who take measurements about themselves regularly to improve their health do their excercises.
+
+Two machine learning algorithms are going to be used: **Decision Trees** and **Random Forest**, the prediction is going to be made with the algorithm with the best performance, understanding performance as the least out of sample expected error. 
+
+## Data Preprocessing and analysis 
+
+Due to security concerns with the exchange of R code, the code will not be run during the evaluation by your classmates, so we are going to use `echo='false'` and `results='hide'`. 
+
+```{r loading packages, echo=FALSE, results='hide', warning=FALSE}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+library(corrplot)
+
+
+set.seed(12345)
+
+# URL of the training and testing data
+train.url ="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test.url = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+# file names
+train.name = "./data/pml-training.csv"
+test.name = "./data/pml-testing.csv"
+# if directory does not exist, create new
+if (!file.exists("./data")) {
+        dir.create("./data")
+}
+# if files does not exist, download the files
+if (!file.exists(train.name)) {
+        download.file(train.url, destfile=train.name, method="auto")
+}
+if (!file.exists(test.name)) {
+        download.file(test.url, destfile=test.name, method="auto")
+}
+# load the CSV files as data.frame 
+train <- read.csv("./data/pml-training.csv")
+test <- read.csv("./data/pml-testing.csv")
+
+```
+
+```{r Data cleaning and analysis, echo=FALSE, results='hide', fig.height=10 , fig.width=14}
+# Data cleaning
+
+# target outcome (label)
+outcome.train <- train[, "classe"]
+outcome <- outcome.train 
+
+levels(outcome)
+
+
+# convert character levels to numeric
+num.class <- length(levels(outcome))
+levels(outcome) <- 1:num.class
+head(outcome)
+
+
+train$outcome <- outcome
+
+# filter columns on: belt, forearm, arm, dumbell
+filter <- grepl("belt|arm|dumbell", names(train))
+train <- train[, filter]
+test <- test[, filter]
+
+# remove columns with NA, use test data as referal for NA
+cols.without.na <- colSums(is.na(test)) == 0
+train <- train[, cols.without.na]
+test <- test[, cols.without.na]
+
+newTraining <- train
+
+# If I want the levels as numeric, I should use the next line
+# newTraining$classe <- outcome 
+# as the algorithm works well with factor, I'll use this:
+newTraining$classe <- outcome.train
+
+correlation <- cor(train)
+
+corrplot(correlation, order = "FPC", method = "color", type = "lower", tl.cex = 0.8, 
+         tl.col = rgb(0, 0, 0))
+
+# Partioning the training set into two
+# Partioning Training data set into two data sets, 60% for myTraining, 40% for myTesting:
+set.seed(12345)
+inTrain <- createDataPartition(y=newTraining$classe, p=0.6, list=FALSE)
+myTraining <- newTraining[inTrain, ]
+myTesting <- newTraining[-inTrain, ]
+```
+
+After preprocessing, the new datasets have the next dimensions:
+
+```{r Showing some Results}
+# Training dataset
+dim(myTraining)
+
+# Testing dataset
+dim(myTesting)
+```
+
+## Models creation
+
+Now, we are going to create a **Decision Tree** in order to know their out of sample error rate:
+
+```{r Decision tree, echo=FALSE, results='hide'}
+set.seed(12345)
+modFitA1 <- rpart(classe ~ ., data=myTraining, method="class")
+
+
+# Predicting:
+        
+predictionsA1 <- predict(modFitA1, myTesting, type = "class")
+
+confus_dTree <- confusionMatrix(predictionsA1,myTesting$classe) 
+
+
+# The estimated out-of-sample error is 1.000 minus the model's accuracy, 
+# the later of which is provided in the output of the confusionmatrix, 
+# or more directly via the 'postresample' function.
+
+accur <- postResample(myTesting$classe, predictionsA1)
+outSampleError_DecisionTree <- (1 - accur[[1]])
+
+```
+
+
+
+Now we found that with the Decision Tree the **Out of Sample expected error is  `r round(outSampleError_DecisionTree * 100,2)`%.** 
+This is a summary of the statistics found:
+
+```{r statistic and tables from Decision Tree}
+# Confusion Matrix table, Decision Tree
+confus_dTree
+```
+
+a graphical representation of the decision tree:
+
+```{r Decision Tree Plot, echo=FALSE}
+# simple plot of the Decision Tree
+prp(modFitA1, main="Resulting Decision Tree")
+```
+
+Next, we'll try to improve it with a **Random Forest** Model. 
+
+```{r Random Forest Model, echo=FALSE, results='hide',fig.height=10 , fig.width=14}
+
+set.seed(12345)
+modFitB1 <- randomForest(classe ~. , data=myTraining)
+
+# Predicting in-sample error:
+predictionsB1 <- predict(modFitB1, myTesting, type = "class")
+
+# Using confusion Matrix to test results:
+confus_rForest <- confusionMatrix(predictionsB1, myTesting$classe)
+# confus_rForest$table
+
+accur2 <- postResample(myTesting$classe, predictionsB1)
+outSampleError_rForest <- (1 - accur2[[1]])
+# outSampleError_rForest
+```
+
+Now we can see that the Random Forest give us an **Out of Sample expected error is `r round(outSampleError_rForest * 100,2)`%** which is much better than the one found with the Decision Tree (`r round(outSampleError_DecisionTree * 100,2)`%). 
+
+This is a summary of the statistics found with the Random Forest:
+
+```{r statistics and tables from the rForest}
+confus_rForest
+```
+
+# Conclusion
+
+We found that the Random Forest brings a better performance than the Decision tree in this specific task, so we utilized it in order to predict the twenty outputs for the homework.
